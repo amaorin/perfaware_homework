@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "reference_haversine.h"
 
 bool
 GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
@@ -51,7 +52,39 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 			break;
 		}
 
-		// TODO
+		srand((u32)seed);
+
+		fprintf(data_flex_file, "{\n\t\"pairs\":[\n");
+
+		f64 haversine_avg = 0;
+
+		for (s64 i = 0; i < number_of_pairs; ++i)
+		{
+			//360*((f64)rand()/RAND_MAX) - 180;
+			//180*((f64)rand()/RAND_MAX) - 90;
+
+			f64 x0 = 360*((f64)rand()/RAND_MAX) - 180;
+			f64 y0 = 180*((f64)rand()/RAND_MAX) - 90;
+			f64 x1 = 360*((f64)rand()/RAND_MAX) - 180;
+			f64 y1 = 180*((f64)rand()/RAND_MAX) - 90;
+
+			char* ending = (i == number_of_pairs-1 ? "" : ",");
+
+			fprintf(data_flex_file, "\t\t{ \"x0\": %21.16f, \"y0\": %20.16f, \"x1\": %21.16f, \"y1\": %20.16f }%s\n", x0, y0, x1, y1, ending);
+
+			f64 haversine_dist = ReferenceHaversine(x0, y0, x1, y1, EARTH_RADIUS);
+			haversine_avg += haversine_dist;
+
+			fwrite(&haversine_dist, sizeof(f64), 1, data_haveranswer_file);
+		}
+
+		fprintf(data_flex_file, "\t]\n}\n");
+
+		haversine_avg /= number_of_pairs;
+		fwrite(&haversine_avg, sizeof(f64), 1, data_haveranswer_file);
+
+		printf("%.16f\n", haversine_avg);
+
 	} while (0);
 
 	if (data_flex_file != 0 && fclose(data_flex_file) != 0)
