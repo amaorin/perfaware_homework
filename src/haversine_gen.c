@@ -26,6 +26,7 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 
 	FILE* data_flex_file        = 0;
 	FILE* data_haveranswer_file = 0;
+	f64 haversine_avg           = 0;
 	do
 	{
 		char data_flex_filename[sizeof("data__flex.json") + 20] = {0};
@@ -84,8 +85,7 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 
 		fprintf(data_flex_file, "{\n\t\"pairs\":[\n");
 
-		f64 haversine_avg = 0;
-
+		f64 res_num_pairs = 1 / (f64)number_of_pairs;
 		for (s64 i = 0; i < number_of_pairs; ++i)
 		{
 			f64 x0, y0, x1, y1;
@@ -135,17 +135,28 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 			fprintf(data_flex_file, "\t\t{ \"x0\": %21.16f, \"y0\": %20.16f, \"x1\": %21.16f, \"y1\": %20.16f }%s\n", x0, y0, x1, y1, ending);
 
 			f64 haversine_dist = ReferenceHaversine(x0, y0, x1, y1, EARTH_RADIUS);
-			haversine_avg += haversine_dist;
+			haversine_avg += res_num_pairs*haversine_dist;
 
 			fwrite(&haversine_dist, sizeof(f64), 1, data_haveranswer_file);
 		}
 
 		fprintf(data_flex_file, "\t]\n}\n");
 
-		haversine_avg /= number_of_pairs;
 		fwrite(&haversine_avg, sizeof(f64), 1, data_haveranswer_file);
 
-		printf("%.16f\n", haversine_avg);
+		if (ferror(data_flex_file) != 0)
+		{
+			//// ERROR
+			fprintf(stderr, "ERROR: Failed to write to json output file\n");
+			encountered_errors = true;
+		}
+
+		if (ferror(data_haveranswer_file) != 0)
+		{
+			//// ERROR
+			fprintf(stderr, "ERROR: Failed to write to answer output file\n");
+			encountered_errors = true;
+		}
 
 	} while (0);
 
@@ -161,6 +172,14 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 		//// ERROR
 		fprintf(stderr, "ERROR: Failed to properly close answer output file\n");
 		encountered_errors = true;
+	}
+
+	if (!encountered_errors)
+	{
+		printf("Method: %s\n", (should_cluster ? "cluster" : "uniform"));
+		printf("Random Seed: %ld\n", seed);
+		printf("Pair count: %ld\n", number_of_pairs);
+		printf("Expected sum: %.16f\n", haversine_avg);
 	}
 
 	return !encountered_errors;
