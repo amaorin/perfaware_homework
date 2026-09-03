@@ -7,6 +7,6 @@ cd build
 
 warn_opts=(-Wall -Wextra -Wshadow)
 common_compile_opts=(${warn_opts[@]} -mavx2)
-debug_compile_opts=(-Od -g)
+debug_compile_opts=(-Og -g)
 
-clang ${common_compile_opts[@]} -lm -o haversine_gen ../src/haversine_gen.c
+clang ${common_compile_opts[@]} ${debug_compile_opts[@]} -lm -o haversine_gen ../src/haversine_gen.c

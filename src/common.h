@@ -36,6 +36,10 @@ typedef u64 umm;
 typedef float f32;
 typedef double f64;
 
+#define ARRAY_LEN(A) (sizeof(A)/sizeof(0[A]))
+
+#define ASSERT(EX) ((EX) ? 1 : ((*(volatile int*)0 = 0), 0))
+
 typedef struct String
 {
 	char* data;
@@ -73,8 +77,6 @@ String_FromCString(char* cstring)
 {
 	return (String){ .data = cstring, .len = CString_Len(cstring) };
 }
-
-#define ARRAY_LEN(A) (sizeof(A)/sizeof(0[A]))
 
 bool
 IsWhitespace(char c)

@@ -5,6 +5,20 @@
 #include "common.h"
 #include "reference_haversine.h"
 
+f64
+Rand01()
+{
+	return (f64)rand() / RAND_MAX;
+}
+
+typedef struct Cluster
+{
+	f64 xmin;
+	f64 xdiff;
+	f64 ymin;
+	f64 ydiff;
+} Cluster;
+
 bool
 GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 {
@@ -54,19 +68,67 @@ GenerateHaversineFiles(bool should_cluster, s64 seed, s64 number_of_pairs)
 
 		srand((u32)seed);
 
+#define CLUSTER_LEN_LG2 2
+#define CLUSTER_LEN (1 << CLUSTER_LEN_LG2)
+		Cluster clusters[CLUSTER_LEN];
+
+		for (umm i = 0; i < CLUSTER_LEN; ++i)
+		{
+			clusters[i] = (Cluster){
+				.xmin  = Rand01(),
+				.xdiff = Rand01()*0.125 + 0.125,
+				.ymin  = Rand01(),
+				.ydiff = Rand01()*0.125 + 0.125,
+			};
+		}
+
 		fprintf(data_flex_file, "{\n\t\"pairs\":[\n");
 
 		f64 haversine_avg = 0;
 
 		for (s64 i = 0; i < number_of_pairs; ++i)
 		{
-			//360*((f64)rand()/RAND_MAX) - 180;
-			//180*((f64)rand()/RAND_MAX) - 90;
+			f64 x0, y0, x1, y1;
 
-			f64 x0 = 360*((f64)rand()/RAND_MAX) - 180;
-			f64 y0 = 180*((f64)rand()/RAND_MAX) - 90;
-			f64 x1 = 360*((f64)rand()/RAND_MAX) - 180;
-			f64 y1 = 180*((f64)rand()/RAND_MAX) - 90;
+			if (!should_cluster)
+			{
+				x0 = Rand01();
+				y0 = Rand01();
+				x1 = Rand01();
+				y1 = Rand01();
+			}
+			else
+			{
+				Cluster* cluster_0 = &clusters[rand() & ((1 << CLUSTER_LEN_LG2) - 1)];
+				Cluster* cluster_1 = &clusters[rand() & ((1 << CLUSTER_LEN_LG2) - 1)];
+				
+				x0 = Rand01()*cluster_0->xdiff + cluster_0->xmin;
+				y0 = Rand01()*cluster_0->ydiff + cluster_0->ymin;
+				x1 = Rand01()*cluster_1->xdiff + cluster_1->xmin;
+				y1 = Rand01()*cluster_1->ydiff + cluster_1->ymin;
+
+				//                      --                     --
+				//                      )  x + 1 , x < 0       )  x - floor(x) , x < 0
+				//                     (                      (
+				// f(x) : [-1, 2]  =  --   x     , else   =  --   x - floor(x) , else   =  x - floor(x)
+				//                     (                      (
+				//                      )  x - 1 , x > 1       )  x - floor(x) , x > 1
+				//                      --                     --
+				x0 -= floor(x0);
+				y0 -= floor(y0);
+				x1 -= floor(x1);
+				y1 -= floor(y1);
+			}
+
+			x0 = 360*x0 - 180;
+			y0 = 180*y0 -  90;
+			x1 = 360*x1 - 180;
+			y1 = 180*y1 -  90;
+
+			ASSERT(x0 >= -180 && x0 <= 180);
+			ASSERT(y0 >=  -90 && y0 <=  90);
+			ASSERT(x1 >= -180 && x1 <= 180);
+			ASSERT(y1 >=  -90 && y1 <=  90);
 
 			char* ending = (i == number_of_pairs-1 ? "" : ",");
 
