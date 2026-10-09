@@ -13,3 +13,6 @@ typedef uint64_t u64;
 
 typedef s64 smm;
 typedef u64 umm;
+
+#define ASSERT(EX) ((EX) ? 1 : ((*(volatile int*)0 = 0), 0))
+#define NOT_IMPLEMENTED ASSERT(!"NOT_IMPLEMENTED")

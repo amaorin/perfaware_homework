@@ -6,4 +6,4 @@ cd $(dirname -- ${BASH_SOURCE[0]})
 mkdir -p build
 cd build
 
-clang -o sim8086 ../src/sim8086.c
+clang -O0 -ggdb -o sim8086 ../src/sim8086.c
