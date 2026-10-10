@@ -2,6 +2,109 @@
 
 #include "common.h"
 
+bool
+EatData(u8** cursor, smm* len, bool wide, u16* data)
+{
+	if (wide)
+	{
+		if (*len < 2)
+		{
+			//// ERROR
+			return false;
+		}
+
+		*data = ((u16)(*cursor)[1] << 8) | (*cursor)[0];
+
+		*len    -= 2;
+		*cursor += 2;
+
+		return true;
+	}
+	else
+	{
+		if (*len < 1)
+		{
+			//// ERROR
+			return false;
+		}
+
+		*data = **cursor;
+
+		*len    -= 1;
+		*cursor += 1;
+
+		return true;
+	}
+}
+
+bool
+EatModRegRm(u8** cursor, smm* len, u8* mod, u8* reg, u8* rm)
+{
+	if (*len < 1)
+	{
+		//// ERROR
+		return false;
+	}
+
+	*mod = (**cursor & 0xC0) >> 6;
+	*reg = (**cursor & 0x38) >> 3;
+	*rm  = (**cursor & 0x07) >> 0;
+
+	*len    -= 1;
+	*cursor += 1;
+
+	return true;
+}
+
+bool
+ReadBinaryFile(char* path, u8** data_out, smm* len_out)
+{
+	bool succeeded = false;
+
+	*data_out = 0;
+	*len_out  = 0;
+
+	FILE* file = 0;
+	u8* data   = 0;
+	do
+	{
+		struct stat stats;
+		if (stat(path, &stats) != 0)
+		{
+			//// ERROR
+			break;
+		}
+
+		smm len = stats.st_size;
+		data    = malloc(len);
+
+		file = fopen(path, "rb");
+		
+		if (file == 0)
+		{
+			//// ERROR
+			break;
+		}
+
+		if (fread(data, 1, len, file) != len)
+		{
+			//// ERROR
+			break;
+		}
+
+		*data_out = data;
+		*len_out  = len;
+		succeeded = true;
+
+	} while (0);
+
+	if (file != 0) fclose(file);
+
+	if (!succeeded && data != 0) free(data);
+
+	return succeeded;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -14,35 +117,14 @@ main(int argc, char** argv)
 
 	char* input_binary_path = argv[1];
 
-	struct stat stats;
-	if (stat(input_binary_path, &stats) != 0)
+	u8* input_binary     = 0;
+	smm input_binary_len = 0;
+	if (!ReadBinaryFile(input_binary_path, &input_binary, &input_binary_len))
 	{
 		//// ERROR
-		fprintf(stderr, "ERROR: failed to stat file \"%s\"\n", input_binary_path);
+		fprintf(stderr, "ERROR: Failed to read binary file \"%s\"\n", input_binary_path);
 		return 1;
 	}
-
-	smm input_binary_len = stats.st_size;
-	u8* input_binary     = malloc(input_binary_len);
-
-	FILE* input_binary_file = fopen(input_binary_path, "rb");
-	
-	if (input_binary_file == 0)
-	{
-		//// ERROR
-		fprintf(stderr, "ERROR: failed to open \"%s\" for binary reading\n", input_binary_path);
-		return 1;
-	}
-
-	if (fread(input_binary, 1, input_binary_len, input_binary_file) != input_binary_len)
-	{
-		//// ERROR
-		fprintf(stderr, "ERROR: failed to read \"%s\"\n", input_binary_path);
-		fclose(input_binary_file);
-		return 1;
-	}
-
-	fclose(input_binary_file);
 
 	// MOV
 	// ----------------------+------------+---------------+---------------+---------------+
@@ -113,18 +195,12 @@ main(int argc, char** argv)
 			--len;
 			++cursor;
 
-			if (len < 1)
+			u8 mod, reg, rm = 0;
+			if (!EatModRegRm(&cursor, &len, &mod, &reg, &rm))
 			{
 				//// ERROR
 				NOT_IMPLEMENTED;
 			}
-
-			u8 mod = (*cursor & 0xC0) >> 6;
-			u8 reg = (*cursor & 0x38) >> 3;
-			u8 rm  = (*cursor & 0x07) >> 0;
-
-			--len;
-			++cursor;
 
 			if (mod == 0x0)
 			{
@@ -139,16 +215,12 @@ main(int argc, char** argv)
 				{
 					ASSERT(rm == 0x6);
 
-					if (len < 2)
+					u16 disp = 0;
+					if (!EatData(&cursor, &len, true, &disp))
 					{
 						//// ERROR
 						NOT_IMPLEMENTED;
 					}
-
-					u16 disp = ((u16)cursor[1] << 8) | cursor[0];
-
-					len    -= 2;
-					cursor += 2;
 
 					if (d) printf("mov [%u], %s\n", disp, regs_table[reg]);
 					else   printf("mov %s, [%u]\n", regs_table[reg], disp);
@@ -157,31 +229,10 @@ main(int argc, char** argv)
 			else if (mod == 0x1 || mod == 0x2)
 			{
 				u16 disp = 0;
-				if (mod == 0x2)
+				if (!EatData(&cursor, &len, (mod == 0x2), &disp))
 				{
-					if (len < 2)
-					{
-						//// ERROR
-						NOT_IMPLEMENTED;
-					}
-
-					disp = ((u16)cursor[1] << 8) | cursor[0];
-
-					len    -= 2;
-					cursor += 2;
-				}
-				else
-				{
-					if (len < 1)
-					{
-						//// ERROR
-						NOT_IMPLEMENTED;
-					}
-
-					disp = *cursor;
-
-					len    -= 1;
-					cursor += 1;
+					//// ERROR
+					NOT_IMPLEMENTED;
 				}
 
 				char* eq = effective_addr_equations[rm];
@@ -216,31 +267,10 @@ main(int argc, char** argv)
 			++cursor;
 
 			u16 data = 0;
-			if (w)
+			if (!EatData(&cursor, &len, w, &data))
 			{
-				if (len < 2)
-				{
-					//// ERROR
-					NOT_IMPLEMENTED;
-				}
-
-				data = ((u16)cursor[1] << 8) | cursor[0];
-
-				len    -= 2;
-				cursor += 2;
-			}
-			else
-			{
-				if (len < 1)
-				{
-					//// ERROR
-					NOT_IMPLEMENTED;
-				}
-
-				data = *cursor;
-
-				len    -= 1;
-				cursor += 1;
+				//// ERROR
+				NOT_IMPLEMENTED;
 			}
 
 			char** regs_table = (w ? regs_w1 : regs_w0);
@@ -252,9 +282,14 @@ main(int argc, char** argv)
 		{
 			bool w = !!(*cursor & 0x1);
 
-			u8 mod = (*cursor & 0xC0) >> 6;
-			u8 reg = (*cursor & 0x38) >> 3; // always 0
-			u8 rm  = (*cursor & 0x07) >> 0;
+			u8 mod, reg, rm = 0;
+			if (!EatModRegRm(&cursor, &len, &mod, &reg, &rm))
+			{
+				//// ERROR
+				NOT_IMPLEMENTED;
+			}
+
+			ASSERT(reg == 0);
 
 			// TODO
 			NOT_IMPLEMENTED;
