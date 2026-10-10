@@ -1,5 +1,3 @@
-#include <stdlib.h>
-#include <stdio.h>
 #include <sys/stat.h>
 
 #include "common.h"
@@ -48,7 +46,7 @@ main(int argc, char** argv)
 
 	// MOV
 	// ----------------------+------------+---------------+---------------+---------------+
-	// reg/mem to/from reg   |  100010dw  |  mod ref r/m  |   (DISP-LO)   |   (DISP-HI)   |
+	// reg/mem to/from reg   |  100010dw  |  mod reg r/m  |   (DISP-LO)   |   (DISP-HI)   |
 	// ----------------------+------------+---------------+---------------+---------------+---------------+----------------+
 	// immediate to reg/mem  |  1100011w  |  mod 000 r/m  |   (DISP-LO)   |   (DISP-HI)   |      data     |  data if w=1   |
 	// ----------------------+------------+---------------+---------------+---------------+---------------+----------------+
@@ -71,16 +69,51 @@ main(int argc, char** argv)
 
 	while (len > 0)
 	{
+		char* regs_w0[8] = {
+			"al",
+			"cl",
+			"dl",
+			"bl",
+			"ah",
+			"ch",
+			"dh",
+			"bh"
+		};
+
+		char* regs_w1[8] = {
+			"ax",
+			"cx",
+			"dx",
+			"bx",
+			"sp",
+			"bp",
+			"si",
+			"di"
+		};
+
+		char* effective_addr_equations[8] = {
+			"bx + si",
+			"bx + di",
+			"bp + si",
+			"bp + di",
+			"si",
+			"di",
+			"bp",
+			"bx"
+		};
+
 		// 100010dw | MOV reg/mem to/from reg
 		if ((*cursor & 0xFC) == 0x88)
 		{
-			bool d = !!(*cursor & 0x10);
-			bool w = !!(*cursor & 0x01);
+			bool d = !!(*cursor & 0x2);
+			bool w = !!(*cursor & 0x1);
+
+			char** regs_table = (w ? regs_w1 : regs_w0);
 
 			--len;
 			++cursor;
 
-			if (len <= 0)
+			if (len < 1)
 			{
 				//// ERROR
 				NOT_IMPLEMENTED;
@@ -93,45 +126,138 @@ main(int argc, char** argv)
 			--len;
 			++cursor;
 
-			if (mod != 0x3) NOT_IMPLEMENTED;
+			if (mod == 0x0)
+			{
+				if (rm != 0x6) // 0x6 is direct address
+				{
+					char* eq = effective_addr_equations[rm];
+
+					if (d) printf("mov %s, [%s]\n", regs_table[reg], eq);
+					else   printf("mov [%s], %s\n", eq, regs_table[reg]);
+				}
+				else
+				{
+					ASSERT(rm == 0x6);
+
+					if (len < 2)
+					{
+						//// ERROR
+						NOT_IMPLEMENTED;
+					}
+
+					u16 disp = ((u16)cursor[1] << 8) | cursor[0];
+
+					len    -= 2;
+					cursor += 2;
+
+					if (d) printf("mov [%u], %s\n", disp, regs_table[reg]);
+					else   printf("mov %s, [%u]\n", regs_table[reg], disp);
+				}
+			}
+			else if (mod == 0x1 || mod == 0x2)
+			{
+				u16 disp = 0;
+				if (mod == 0x2)
+				{
+					if (len < 2)
+					{
+						//// ERROR
+						NOT_IMPLEMENTED;
+					}
+
+					disp = ((u16)cursor[1] << 8) | cursor[0];
+
+					len    -= 2;
+					cursor += 2;
+				}
+				else
+				{
+					if (len < 1)
+					{
+						//// ERROR
+						NOT_IMPLEMENTED;
+					}
+
+					disp = *cursor;
+
+					len    -= 1;
+					cursor += 1;
+				}
+
+				char* eq = effective_addr_equations[rm];
+
+				if (d) printf("mov %s, [%s + %u]\n", regs_table[reg], eq, disp);
+				else   printf("mov [%s + %u], %s\n", eq, disp, regs_table[reg]);
+			}
 			else
 			{
-				char* regs_w0[8] = {
-					"al",
-					"cl",
-					"dl",
-					"bl",
-					"ah",
-					"ch",
-					"dh",
-					"bh"
-				};
+				ASSERT(mod == 0x3);
 
-				char* regs_w1[8] = {
-					"ax",
-					"cx",
-					"dx",
-					"bx",
-					"sp",
-					"bp",
-					"si",
-					"di"
-				};
-
-				char** regs_table = (w ? regs_w1 : regs_w0);
-
-				char* dst_reg = regs_table[rm];
-				char* src_reg = regs_table[reg];
+				char* dst = regs_table[rm];
+				char* src = regs_table[reg];
 
 				if (d)
 				{
-					char* tmp = dst_reg;
-					dst_reg = src_reg;
-					src_reg = dst_reg;
+					char* tmp = dst;
+					dst = src;
+					src = dst;
 				}
 
-				printf("mov %s, %s\n", dst_reg, src_reg);
+				printf("mov %s, %s\n", dst, src);
 			}
+		}
+		// 1011wreg | MOV immediate to reg
+		else if ((*cursor & 0xF0) == 0xB0)
+		{
+			bool w = !!(*cursor & 0x08);
+			u8 reg = *cursor & 0x07;
+
+			--len;
+			++cursor;
+
+			u16 data = 0;
+			if (w)
+			{
+				if (len < 2)
+				{
+					//// ERROR
+					NOT_IMPLEMENTED;
+				}
+
+				data = ((u16)cursor[1] << 8) | cursor[0];
+
+				len    -= 2;
+				cursor += 2;
+			}
+			else
+			{
+				if (len < 1)
+				{
+					//// ERROR
+					NOT_IMPLEMENTED;
+				}
+
+				data = *cursor;
+
+				len    -= 1;
+				cursor += 1;
+			}
+
+			char** regs_table = (w ? regs_w1 : regs_w0);
+
+			printf("mov %s, %u\n", regs_table[reg], data);
+		}
+		// 1100011w | MOV immediate to reg/mem
+		else if ((*cursor & 0xFE) == 0xC6)
+		{
+			bool w = !!(*cursor & 0x1);
+
+			u8 mod = (*cursor & 0xC0) >> 6;
+			u8 reg = (*cursor & 0x38) >> 3; // always 0
+			u8 rm  = (*cursor & 0x07) >> 0;
+
+			// TODO
+			NOT_IMPLEMENTED;
 		}
 		else
 		{

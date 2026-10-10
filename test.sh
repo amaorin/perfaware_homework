@@ -8,12 +8,26 @@ cd build
 
 "../build.sh"
 
+rm -rf ./test_dir*
+
 COMPUTER_ENHANCE_HOME=$(cd "../../computer_enhance" && pwd)
 PERFAWARE_HOME="$COMPUTER_ENHANCE_HOME/perfaware"
 
 SIM8086_DECODE_TEST_FILES=(
 	listing_0037_single_register_mov
 	listing_0038_many_register_mov
+	listing_0039_more_movs
+#listing_0040_challenge_movs
+#listing_0041_add_sub_cmp_jnz
+#listing_0042_completionist_decode
+#listing_0043_immediate_movs
+#listing_0044_register_movs
+#listing_0045_challenge_register_movs
+#listing_0046_add_sub_cmp
+#listing_0047_challenge_flags
+#listing_0048_ip_register
+#listing_0049_conditional_jumps
+#listing_0050_challenge_jumps
 )
 
 test_name_col_size=0
@@ -26,7 +40,7 @@ done
 
 test_name_col_size=$((test_name_col_size+3))
 
-test_dir=$(uuidgen)
+test_dir="test_dir-$(uuidgen)"
 
 mkdir $test_dir
 cd $test_dir
