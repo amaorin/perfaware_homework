@@ -56,6 +56,202 @@ EatModRegRm(u8** cursor, smm* len, u8* mod, u8* reg, u8* rm)
 	return true;
 }
 
+typedef enum Reg
+{
+	Reg_AL,
+	Reg_CL,
+	Reg_DL,
+	Reg_BL,
+	Reg_AH,
+	Reg_CH,
+	Reg_DH,
+	Reg_BH,
+
+	Reg_AX,
+	Reg_CX,
+	Reg_DX,
+	Reg_BX,
+	Reg_SP,
+	Reg_BP,
+	Reg_SI,
+	Reg_DI,
+
+	REG_COUNT
+} Reg;
+
+char* RegStrings[REG_COUNT] = {
+	[Reg_AL] = "al",
+	[Reg_CL] = "cl",
+	[Reg_DL] = "dl",
+	[Reg_BL] = "bl",
+	[Reg_AH] = "ah",
+	[Reg_CH] = "ch",
+	[Reg_DH] = "dh",
+	[Reg_BH] = "bh",
+
+	[Reg_AX] = "ax",
+	[Reg_CX] = "cx",
+	[Reg_DX] = "dx",
+	[Reg_BX] = "bx",
+	[Reg_SP] = "sp",
+	[Reg_BP] = "bp",
+	[Reg_SI] = "si",
+	[Reg_DI] = "di",
+};
+
+Reg
+Reg_FromBits(bool wide, u8 reg_bits)
+{
+	return (wide ? 0x8 : 0x0) | reg_bits;
+}
+
+typedef enum Effective_Addr_Kind
+{
+	EffectiveAddr_BXpSI,
+	EffectiveAddr_BXpDI,
+	EffectiveAddr_BPpSI,
+	EffectiveAddr_BPpDI,
+	EffectiveAddr_SI,
+	EffectiveAddr_DI,
+	EffectiveAddr_BP,
+	EffectiveAddr_BX,
+
+	EFFECTIVE_ADDR_COUNT
+} Effective_Addr_Kind;
+
+char* EffectiveAddrStrings[EFFECTIVE_ADDR_COUNT] = {
+	[EffectiveAddr_BXpSI] = "bx + si",
+	[EffectiveAddr_BXpDI] = "bx + di",
+	[EffectiveAddr_BPpSI] = "bp + si",
+	[EffectiveAddr_BPpDI] = "bp + di",
+	[EffectiveAddr_SI]    = "si",
+	[EffectiveAddr_DI]    = "di",
+	[EffectiveAddr_BP]    = "bp",
+	[EffectiveAddr_BX]    = "bx"
+};
+
+typedef enum Operand_Kind
+{
+	Operand_Invalid = 0,
+	Operand_Immed,
+	Operand_Reg,
+	Operand_Direct,
+	Operand_Index,
+	Operand_IndexDisp8,
+	Operand_IndexDisp16,
+} Operand_Kind;
+
+typedef struct Operand
+{
+	Operand_Kind kind;
+	union
+	{
+		u16 immed;
+		Reg reg;
+		u16 direct;
+		Effective_Addr_Kind index;
+		struct
+		{
+			Effective_Addr_Kind index;
+			u16 disp;
+		} index_disp;
+	};
+} Operand;
+
+void
+PrintOperand(Operand op)
+{
+	switch (op.kind)
+	{
+		case Operand_Immed:       printf("%u", op.immed);                         break;
+		case Operand_Reg:         printf("%s", RegStrings[op.reg]);               break;
+		case Operand_Direct:      printf("[%u]", op.direct);                      break;
+		case Operand_Index:       printf("[%s]", EffectiveAddrStrings[op.index]); break;
+		case Operand_IndexDisp8: // fallthrough
+		case Operand_IndexDisp16: printf("[%s + %u]", EffectiveAddrStrings[op.index_disp.index], op.index_disp.disp); break;
+
+		default: NOT_IMPLEMENTED; break;
+	}
+}
+
+void
+PrintOperation(char* op_name, Operand dst, Operand src)
+{
+	printf("%s ", op_name);
+	PrintOperand(dst);
+	printf(", ");
+	PrintOperand(src);
+	printf("\n");
+}
+
+bool
+EatModRegRmDisp(u8** cursor, smm* len, bool wide, bool swap_order, Operand* dst, Operand* src)
+{
+	u8 mod, reg_bits, rm = 0;
+	if (!EatModRegRm(cursor, len, &mod, &reg_bits, &rm))
+	{
+		//// ERROR
+		return false;
+	}
+
+	*src = (Operand){ .kind = Operand_Reg, .reg = Reg_FromBits(wide, reg_bits) };
+
+	if (mod == 0x0)
+	{
+		if (rm != 0x6) // 0x6 is direct address
+		{
+			*dst = (Operand){ .kind = Operand_Index, .index = (Effective_Addr_Kind)rm };
+		}
+		else
+		{
+			ASSERT(rm == 0x6);
+
+			u16 disp = 0;
+			if (!EatData(cursor, len, true, &disp))
+			{
+				//// ERROR
+				return false;
+			}
+
+			*dst = (Operand){ .kind = Operand_Direct, .direct = disp };
+		}
+	}
+	else if (mod == 0x1 || mod == 0x2)
+	{
+		bool wide_disp = (mod == 0x2);
+
+		u16 disp = 0;
+		if (!EatData(cursor, len, wide_disp, &disp))
+		{
+			//// ERROR
+			return false;
+		}
+
+		*dst = (Operand){
+			.kind       = (wide_disp ? Operand_IndexDisp16 : Operand_IndexDisp8),
+			.index_disp = {
+				.index = (Effective_Addr_Kind)rm,
+				.disp  = disp
+			}
+		};
+	}
+	else
+	{
+		ASSERT(mod == 0x3);
+
+		*dst = (Operand){ .kind = Operand_Reg, .reg = Reg_FromBits(wide, rm) };
+	}
+
+	if (swap_order)
+	{
+		Operand tmp = *dst;
+		*dst = *src;
+		*src = tmp;
+	}
+
+	return true;
+}
+
 bool
 ReadBinaryFile(char* path, u8** data_out, smm* len_out)
 {
@@ -151,111 +347,24 @@ main(int argc, char** argv)
 
 	while (len > 0)
 	{
-		char* regs_w0[8] = {
-			"al",
-			"cl",
-			"dl",
-			"bl",
-			"ah",
-			"ch",
-			"dh",
-			"bh"
-		};
-
-		char* regs_w1[8] = {
-			"ax",
-			"cx",
-			"dx",
-			"bx",
-			"sp",
-			"bp",
-			"si",
-			"di"
-		};
-
-		char* effective_addr_equations[8] = {
-			"bx + si",
-			"bx + di",
-			"bp + si",
-			"bp + di",
-			"si",
-			"di",
-			"bp",
-			"bx"
-		};
-
 		// 100010dw | MOV reg/mem to/from reg
 		if ((*cursor & 0xFC) == 0x88)
 		{
 			bool d = !!(*cursor & 0x2);
 			bool w = !!(*cursor & 0x1);
 
-			char** regs_table = (w ? regs_w1 : regs_w0);
-
 			--len;
 			++cursor;
 
-			u8 mod, reg, rm = 0;
-			if (!EatModRegRm(&cursor, &len, &mod, &reg, &rm))
+			Operand dst = {0};
+			Operand src = {0};
+			if (!EatModRegRmDisp(&cursor, &len, w, d, &dst, &src))
 			{
 				//// ERROR
 				NOT_IMPLEMENTED;
 			}
 
-			if (mod == 0x0)
-			{
-				if (rm != 0x6) // 0x6 is direct address
-				{
-					char* eq = effective_addr_equations[rm];
-
-					if (d) printf("mov %s, [%s]\n", regs_table[reg], eq);
-					else   printf("mov [%s], %s\n", eq, regs_table[reg]);
-				}
-				else
-				{
-					ASSERT(rm == 0x6);
-
-					u16 disp = 0;
-					if (!EatData(&cursor, &len, true, &disp))
-					{
-						//// ERROR
-						NOT_IMPLEMENTED;
-					}
-
-					if (d) printf("mov [%u], %s\n", disp, regs_table[reg]);
-					else   printf("mov %s, [%u]\n", regs_table[reg], disp);
-				}
-			}
-			else if (mod == 0x1 || mod == 0x2)
-			{
-				u16 disp = 0;
-				if (!EatData(&cursor, &len, (mod == 0x2), &disp))
-				{
-					//// ERROR
-					NOT_IMPLEMENTED;
-				}
-
-				char* eq = effective_addr_equations[rm];
-
-				if (d) printf("mov %s, [%s + %u]\n", regs_table[reg], eq, disp);
-				else   printf("mov [%s + %u], %s\n", eq, disp, regs_table[reg]);
-			}
-			else
-			{
-				ASSERT(mod == 0x3);
-
-				char* dst = regs_table[rm];
-				char* src = regs_table[reg];
-
-				if (d)
-				{
-					char* tmp = dst;
-					dst = src;
-					src = dst;
-				}
-
-				printf("mov %s, %s\n", dst, src);
-			}
+			PrintOperation("mov", dst, src);
 		}
 		// 1011wreg | MOV immediate to reg
 		else if ((*cursor & 0xF0) == 0xB0)
@@ -273,9 +382,7 @@ main(int argc, char** argv)
 				NOT_IMPLEMENTED;
 			}
 
-			char** regs_table = (w ? regs_w1 : regs_w0);
-
-			printf("mov %s, %u\n", regs_table[reg], data);
+			printf("mov %s, %u\n", RegStrings[Reg_FromBits(w, reg)], data);
 		}
 		// 1100011w | MOV immediate to reg/mem
 		else if ((*cursor & 0xFE) == 0xC6)
@@ -290,6 +397,15 @@ main(int argc, char** argv)
 			}
 
 			ASSERT(reg == 0);
+
+			NOT_IMPLEMENTED;
+
+			u16 data = 0;
+			if (!EatData(&cursor, &len, w, &data))
+			{
+				//// ERROR
+				NOT_IMPLEMENTED;
+			}
 
 			// TODO
 			NOT_IMPLEMENTED;
