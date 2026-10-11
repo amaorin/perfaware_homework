@@ -38,6 +38,22 @@ EatData(u8** cursor, smm* len, bool wide, u16* data)
 }
 
 bool
+EatSignedData(u8** cursor, smm* len, bool wide, s16* data)
+{
+	u16 unsigned_data = 0;
+	if (!EatData(cursor, len, wide, &unsigned_data))
+	{
+		//// ERROR
+		return false;
+	}
+
+	if (wide) *data = (s16)unsigned_data;
+	else      *data = (s16)(s8)unsigned_data;
+
+	return true;
+}
+
+bool
 EatModRegRm(u8** cursor, smm* len, u8* mod, u8* reg, u8* rm)
 {
 	if (*len < 1)
@@ -153,7 +169,7 @@ typedef struct Operand
 		struct
 		{
 			Effective_Addr_Kind index;
-			u16 disp;
+			s16 disp;
 		} index_disp;
 	};
 } Operand;
@@ -168,24 +184,49 @@ PrintOperand(Operand op)
 		case Operand_Direct:      printf("[%u]", op.direct);                      break;
 		case Operand_Index:       printf("[%s]", EffectiveAddrStrings[op.index]); break;
 		case Operand_IndexDisp8: // fallthrough
-		case Operand_IndexDisp16: printf("[%s + %u]", EffectiveAddrStrings[op.index_disp.index], op.index_disp.disp); break;
+		case Operand_IndexDisp16:
+		{
+			char* eq = EffectiveAddrStrings[op.index_disp.index];
+			s16 disp = op.index_disp.disp;
+
+			if (disp < 0) printf("[%s - %d]", eq, -disp);
+			else          printf("[%s + %d]", eq, +disp);
+		} break;
 
 		default: NOT_IMPLEMENTED; break;
 	}
 }
 
 void
-PrintOperation(char* op_name, Operand dst, Operand src)
+PrintOperation(char* op_name, bool swap_order, Operand dst, Operand src)
 {
+	if (swap_order)
+	{
+		Operand tmp = dst;
+		dst = src;
+		src = tmp;
+	}
+
 	printf("%s ", op_name);
+
 	PrintOperand(dst);
+
 	printf(", ");
+
+	if (src.kind == Operand_Immed && dst.kind != Operand_Reg)
+	{
+		bool wide = (src.immed > 0xFF);
+
+		printf("%s ", (wide ? "word" : "byte"));
+	}
+
 	PrintOperand(src);
+
 	printf("\n");
 }
 
 bool
-EatModRegRmDisp(u8** cursor, smm* len, bool wide, bool swap_order, Operand* dst, Operand* src)
+EatModRegRmDisp(u8** cursor, smm* len, bool wide, Operand* dst, Operand* src)
 {
 	u8 mod, reg_bits, rm = 0;
 	if (!EatModRegRm(cursor, len, &mod, &reg_bits, &rm))
@@ -206,22 +247,22 @@ EatModRegRmDisp(u8** cursor, smm* len, bool wide, bool swap_order, Operand* dst,
 		{
 			ASSERT(rm == 0x6);
 
-			u16 disp = 0;
-			if (!EatData(cursor, len, true, &disp))
+			u16 direct = 0;
+			if (!EatData(cursor, len, true, &direct))
 			{
 				//// ERROR
 				return false;
 			}
 
-			*dst = (Operand){ .kind = Operand_Direct, .direct = disp };
+			*dst = (Operand){ .kind = Operand_Direct, .direct = direct };
 		}
 	}
 	else if (mod == 0x1 || mod == 0x2)
 	{
 		bool wide_disp = (mod == 0x2);
 
-		u16 disp = 0;
-		if (!EatData(cursor, len, wide_disp, &disp))
+		s16 disp = 0;
+		if (!EatSignedData(cursor, len, wide_disp, &disp))
 		{
 			//// ERROR
 			return false;
@@ -240,13 +281,6 @@ EatModRegRmDisp(u8** cursor, smm* len, bool wide, bool swap_order, Operand* dst,
 		ASSERT(mod == 0x3);
 
 		*dst = (Operand){ .kind = Operand_Reg, .reg = Reg_FromBits(wide, rm) };
-	}
-
-	if (swap_order)
-	{
-		Operand tmp = *dst;
-		*dst = *src;
-		*src = tmp;
 	}
 
 	return true;
@@ -358,13 +392,13 @@ main(int argc, char** argv)
 
 			Operand dst = {0};
 			Operand src = {0};
-			if (!EatModRegRmDisp(&cursor, &len, w, d, &dst, &src))
+			if (!EatModRegRmDisp(&cursor, &len, w, &dst, &src))
 			{
 				//// ERROR
 				NOT_IMPLEMENTED;
 			}
 
-			PrintOperation("mov", dst, src);
+			PrintOperation("mov", d, dst, src);
 		}
 		// 1011wreg | MOV immediate to reg
 		else if ((*cursor & 0xF0) == 0xB0)
@@ -382,23 +416,28 @@ main(int argc, char** argv)
 				NOT_IMPLEMENTED;
 			}
 
-			printf("mov %s, %u\n", RegStrings[Reg_FromBits(w, reg)], data);
+			Operand dst = (Operand){ .kind = Operand_Reg,   .reg   = Reg_FromBits(w, reg) };
+			Operand src = (Operand){ .kind = Operand_Immed, .immed = data                 };
+			PrintOperation("mov", false, dst, src);
 		}
 		// 1100011w | MOV immediate to reg/mem
 		else if ((*cursor & 0xFE) == 0xC6)
 		{
 			bool w = !!(*cursor & 0x1);
 
-			u8 mod, reg, rm = 0;
-			if (!EatModRegRm(&cursor, &len, &mod, &reg, &rm))
+			--len;
+			++cursor;
+
+			Operand ignored = {0};
+			Operand dst     = {0};
+			if (!EatModRegRmDisp(&cursor, &len, w, &dst, &ignored))
 			{
 				//// ERROR
 				NOT_IMPLEMENTED;
 			}
 
-			ASSERT(reg == 0);
-
-			NOT_IMPLEMENTED;
+			// The reg bits should always be 0, assert it just to be sure
+			ASSERT(ignored.kind == Operand_Reg && (ignored.reg & 0x7) == 0);
 
 			u16 data = 0;
 			if (!EatData(&cursor, &len, w, &data))
@@ -407,8 +446,30 @@ main(int argc, char** argv)
 				NOT_IMPLEMENTED;
 			}
 
-			// TODO
-			NOT_IMPLEMENTED;
+			Operand src = (Operand){ .kind = Operand_Immed, .immed = data };
+
+			PrintOperation("mov", false, dst, src);
+		}
+		// 101000dw | accumulator to/from mem
+		else if ((*cursor & 0xFC) == 0xA0)
+		{
+			bool d = !!(*cursor & 0x2);
+			bool w = !!(*cursor & 0x1);
+
+			--len;
+			++cursor;
+
+			u16 addr = 0;
+			if (!EatData(&cursor, &len, true, &addr))
+			{
+				//// ERROR
+				NOT_IMPLEMENTED;
+			}
+
+			Operand dst = (Operand){ .kind = Operand_Reg,    .reg = (w ? Reg_AX : Reg_AL) };
+			Operand src = (Operand){ .kind = Operand_Direct, .direct = addr };
+
+			PrintOperation("mov", d, dst, src);
 		}
 		else
 		{

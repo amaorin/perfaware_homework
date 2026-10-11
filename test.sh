@@ -17,7 +17,7 @@ SIM8086_DECODE_TEST_FILES=(
 	listing_0037_single_register_mov
 	listing_0038_many_register_mov
 	listing_0039_more_movs
-#listing_0040_challenge_movs
+	listing_0040_challenge_movs
 #listing_0041_add_sub_cmp_jnz
 #listing_0042_completionist_decode
 #listing_0043_immediate_movs
@@ -51,7 +51,7 @@ echo "------------------------+"
 echo
 for index in ${!SIM8086_DECODE_TEST_FILES[@]}; do
 	test_file=${SIM8086_DECODE_TEST_FILES[index]}
-	printf "[%02d/%02d] %s" $index ${#SIM8086_DECODE_TEST_FILES[@]} $test_file
+	printf "[%02d/%02d] %s" $(($index+1)) ${#SIM8086_DECODE_TEST_FILES[@]} $test_file
 	line_len=${#test_file}
 	while (( line_len < test_name_col_size)); do
 		echo -n .
