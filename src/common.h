@@ -29,3 +29,9 @@ DefaultAssertHandler(char* file, int line, char* ex)
 	fprintf(stderr, "*** ASSERTION FAILED ***\n");
 	fprintf(stderr, "%s(%d): %s\n", file, line, ex);
 }
+
+#define OUT
+#define INOUT
+
+#define IS_POW2(N) ((N) != 0 && ((N) & ((N) - 1)) == 0)
+#define ALIGN(N, A) (((N) + (A) - 1) & (-(A)))
