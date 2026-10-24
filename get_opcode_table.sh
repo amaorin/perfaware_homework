@@ -36,6 +36,8 @@ rows = opcode_table_text.split("\n\n")
 
 opcodes = []
 
+all_regs = set()
+
 curr_opcode = []
 prev_name = ""
 for row in rows:
@@ -70,19 +72,22 @@ for row in rows:
         first_byte = opcode[:8]
         rest       = opcode[8:]
 
+        all_regs.add(regs)
+
         curr_opcode.append([name, regs, first_byte, rest])
 
 alu_opcodes = ["ADD", "ADC", "SUB", "SBB", "CMP", "AND", "XOR", "OR"]
 shl_opcodes = ["SHR", "SAR", "SHL", "SAL", "ROR", "ROL", "RCL", "RCR"]
+mul_opcodes = ["MUL", "DIV", "IDIV", "IMUL"]
+segments    = ["CS", "DS", "ES"]
 
 for encodings in opcodes:
     name = encodings[0][0]
+    has_mm = 0
+    for enc in encodings:
+        if enc[1] in ["Reg,Reg", "Mem,Reg", "Reg,Mem", "RegWord,Mem"]:
+            has_mm += 1
 
-    if len(encodings) == 1:
-        continue
-    elif name in alu_opcodes:
-        continue
-    elif name in shl_opcodes:
-        continue
+    if has_mm > 0:
+        print(name, has_mm)
 
-    print(name)
