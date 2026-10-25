@@ -37,51 +37,6 @@ DefaultAssertHandler(char* file, int line, char* ex)
 #define IS_POW2(N) ((N) != 0 && ((N) & ((N) - 1)) == 0)
 #define ALIGN(N, A) (((N) + (A) - 1) & (-(A)))
 
-typedef struct Error
-{
-} Error;
-
-Error
-ReadBinaryFile(char* path)
-{
-	bool succeeded = false;
-
-	FILE* file = 0;
-
-	do
-	{
-		struct stat info;
-		if (stat(path, &info) != 0)
-		{
-			//// ERROR
-			error_msg = "failed to stat the specified file";
-			break;
-		}
-
-		file = fopen(path, "rb");
-		if (file == 0)
-		{
-			//// ERROR
-			error_msg = "failed to open the file for reading in binary mode";
-			break;
-		}
-
-		if (fread(, 1, info.st_size, file) != info.st_size)
-		{
-			//// ERROR
-			error_msg = "failed to read the contents of the specified file";
-			break;
-		}
-
-		succeeded = true;
-
-	} while (0);
-
-	if (file != 0) fclose(file);
-
-	return (Error){ .succeeded = succeeded, error_msg = error_msg };
-}
-
 int
 main(int argc, char** argv)
 {
@@ -92,14 +47,64 @@ main(int argc, char** argv)
 		return 1;
 	}
 
-	char* input_file_path = argv[1];
+	char* path = argv[1];
 
-	if (!ReadBinaryFile(input_file_path))
-	{
-		//// ERROR
-		fprintf(stderr, "Failed to read input file\n");
-		return 1;
+	umm cap  = 1 << 20;
+	u8* data = malloc(cap);
+	umm len  = 0;
+	{ /// Read input file
+		bool succeeded = false;
+
+		FILE* file = 0;
+
+		do
+		{
+			struct stat info;
+			if (stat(path, &info) != 0)
+			{
+				//// ERROR
+				fprintf(stderr, "ERROR: failed to stat the specified input file\n");
+				break;
+			}
+
+			len = info.st_size;
+
+			if (len > cap)
+			{
+				//// ERROR
+				fprintf(stderr, "ERROR: specified input file is too large\n");
+				break;
+			}
+
+			file = fopen(path, "rb");
+			if (file == 0)
+			{
+				//// ERROR
+				fprintf(stderr, "ERROR: failed to open specified input file for reading in binary mode\n");
+				break;
+			}
+
+			if (fread(data, 1, len, file) != len)
+			{
+				//// ERROR
+				fprintf(stderr, "ERROR: failed to read specified input file\n");
+				break;
+			}
+
+			succeeded = true;
+
+		} while (0);
+
+		if (file != 0) fclose(file);
+
+		if (!succeeded)
+		{
+			//// ERROR
+			return 1;
+		}
 	}
+
+	printf("%lu\n", len);
 
 	return 0;
 }
