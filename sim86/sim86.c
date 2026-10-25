@@ -1,3 +1,4 @@
+// this code is uttter hargabe and I am too stupud to fix it
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -37,6 +38,47 @@ DefaultAssertHandler(char* file, int line, char* ex)
 #define IS_POW2(N) ((N) != 0 && ((N) & ((N) - 1)) == 0)
 #define ALIGN(N, A) (((N) + (A) - 1) & (-(A)))
 
+typedef struct Memory
+{
+	u8 data[1 << 20];
+} Memory;
+
+bool
+ReadFileIntoMemory(char* path, Memory* memory)
+{
+	struct stat stat_info = {0};
+	if (stat(path, &stat_info) != 0)
+	{
+		//// ERROR
+		fprintf(stderr, "ERROR: failed to stat \"%s\"\n", path);
+		return false;
+	}
+
+	if (stat_info.st_size > sizeof(Memory))
+	{
+		//// ERROR
+		fprintf(stderr, "ERROR: the input binary is too large\n");
+		return false;
+	}
+
+	FILE* file       = fopen(path, "rb");
+	umm fread_result = 0;
+	if (file != 0)
+	{
+		fread_result = fread(memory->data, 1, len, file);
+		fclose(file);
+	}
+
+	if (file == 0 || fread_result != len)
+	{
+		//// ERROR
+		fprintf(stderr, "ERROR: failed to read the input binary at path \"%s\"\n", path);
+		return false;
+	}
+
+	return true;
+}
+
 int
 main(int argc, char** argv)
 {
@@ -49,62 +91,12 @@ main(int argc, char** argv)
 
 	char* path = argv[1];
 
-	umm cap  = 1 << 20;
-	u8* data = malloc(cap);
-	umm len  = 0;
-	{ /// Read input file
-		bool succeeded = false;
-
-		FILE* file = 0;
-
-		do
-		{
-			struct stat info;
-			if (stat(path, &info) != 0)
-			{
-				//// ERROR
-				fprintf(stderr, "ERROR: failed to stat the specified input file\n");
-				break;
-			}
-
-			len = info.st_size;
-
-			if (len > cap)
-			{
-				//// ERROR
-				fprintf(stderr, "ERROR: specified input file is too large\n");
-				break;
-			}
-
-			file = fopen(path, "rb");
-			if (file == 0)
-			{
-				//// ERROR
-				fprintf(stderr, "ERROR: failed to open specified input file for reading in binary mode\n");
-				break;
-			}
-
-			if (fread(data, 1, len, file) != len)
-			{
-				//// ERROR
-				fprintf(stderr, "ERROR: failed to read specified input file\n");
-				break;
-			}
-
-			succeeded = true;
-
-		} while (0);
-
-		if (file != 0) fclose(file);
-
-		if (!succeeded)
-		{
-			//// ERROR
-			return 1;
-		}
+	Memory* memory = malloc(sizeof(Memory));
+	if (!ReadFileIntoMemory(path, memory))
+	{
+		//// ERROR
+		return 1;
 	}
-
-	printf("%lu\n", len);
 
 	return 0;
 }
