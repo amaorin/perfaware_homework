@@ -227,28 +227,28 @@ main(int argc, char** argv)
 	}
 	else
 	{
-		TJSON tjson = TJSON_Init(json_file, true);
+		TJSONWriter tjson = TJSONWriter_Init(json_file, true);
 
-		TJSON_WriteObject(&tjson)
+		TJSONWriter_WriteObject(&tjson)
 		{
-			TJSON_WritePropertyName(&tjson, "pairs");
-			TJSON_WriteArray(&tjson)
+			TJSONWriter_WritePropertyName(&tjson, "pairs");
+			TJSONWriter_WriteArray(&tjson)
 			{
 				for (umm i = 0; i < num_pairs; ++i)
 				{
-					TJSON_WriteObject(&tjson)
+					TJSONWriter_WriteObject(&tjson)
 					{
-						TJSON_WritePropertyName(&tjson, "x0");
-						TJSON_WriteValueF64(&tjson, pairs[i].x0);
+						TJSONWriter_WritePropertyName(&tjson, "x0");
+						TJSONWriter_WriteValueF64(&tjson, pairs[i].x0);
 
-						TJSON_WritePropertyName(&tjson, "y0");
-						TJSON_WriteValueF64(&tjson, pairs[i].y0);
+						TJSONWriter_WritePropertyName(&tjson, "y0");
+						TJSONWriter_WriteValueF64(&tjson, pairs[i].y0);
 
-						TJSON_WritePropertyName(&tjson, "x1");
-						TJSON_WriteValueF64(&tjson, pairs[i].x1);
+						TJSONWriter_WritePropertyName(&tjson, "x1");
+						TJSONWriter_WriteValueF64(&tjson, pairs[i].x1);
 
-						TJSON_WritePropertyName(&tjson, "y1");
-						TJSON_WriteValueF64(&tjson, pairs[i].y1);
+						TJSONWriter_WritePropertyName(&tjson, "y1");
+						TJSONWriter_WriteValueF64(&tjson, pairs[i].y1);
 					}
 				}
 			}
