@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -32,7 +34,22 @@ typedef u64 umm;
 typedef float f32;
 typedef double f64;
 
+typedef union F32_Bits
+{
+	u32 bits;
+	f32 f;
+} F32_Bits;
+
+typedef union F64_Bits
+{
+	u64 bits;
+	f64 f;
+} F64_Bits;
+
 #define ASSERT(EX) ((EX) ? (1) : ((*(volatile int*)0 = 0), 0))
+#define NOT_IMPLEMENTED ASSERT(!"NOT_IMPLEMENTED")
+
+#define ARRAY_LEN(A) (sizeof(A)/sizeof(0[A]))
 
 bool
 Char_IsDigit(char c)
@@ -116,7 +133,8 @@ String_ParseU64(String string, u64* result)
 		++leading_zeros;
 	}
 
-	u64 value = 0;
+	u64 value         = 0;
+	bool did_overflow = false;
 	for (; i < string.len; ++i)
 	{
 		if (!Char_IsDigit(string.data[i]))
@@ -125,14 +143,17 @@ String_ParseU64(String string, u64* result)
 			return false;
 		}
 
-		value *= 10;
-		value += (string.data[i] & 0xF);
+		u64 digit = string.data[i] & 0xF;
+
+		did_overflow = (
+				__builtin_mul_overflow(value, 10, &value)
+			| __builtin_add_overflow(value, digit, &value)
+		);
 	}
 
 	umm digit_count = string.len - leading_zeros;
 
-	// TODO: this as a bunch of false positives since log2(10^19) ~= 63.1166
-	if (digit_count >= 20)
+	if (digit_count > 20 || did_overflow)
 	{
 		//// ERROR: overflow
 		return false;
