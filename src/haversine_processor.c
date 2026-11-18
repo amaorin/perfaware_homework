@@ -3,11 +3,11 @@
 
 #include <stdio.h>
 
+typedef struct JSON_Field JSON_Field;
+
 typedef JSON_Object
 {
-	u64 fields_len;
-	String* field_names;
-	TJSON_Value* field_values;
+	JSON_Field* fields;
 } JSON_Object;
 
 typedef JSON_Array
@@ -28,6 +28,7 @@ typedef enum JSON_Value_Kind
 
 typedef struct JSON_Value
 {
+	TJSON_Value* next;
 	JSON_Value_Kind kind;
 	union
 	{
@@ -38,6 +39,12 @@ typedef struct JSON_Value
 		bool boolean;
 	};
 } JSON_Value;
+
+typedef struct JSON_Field
+{
+	String name;
+	JSON_Value* value;
+} JSON_Field;
 
 typedef enum JSON_Token_Kind
 {
