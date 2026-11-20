@@ -3,49 +3,6 @@
 
 #include <stdio.h>
 
-typedef struct JSON_Field JSON_Field;
-
-typedef JSON_Object
-{
-	JSON_Field* fields;
-} JSON_Object;
-
-typedef JSON_Array
-{
-	u64 elements_len;
-	TJSON_Value* elements;
-} JSON_Array;
-
-typedef enum JSON_Value_Kind
-{
-	JSONValue_Object,
-	JSONValue_Array,
-	JSONValue_String,
-	JSONValue_Number,
-	JSONValue_Bool,
-	JSONValue_Null,
-} JSON_Value_Kind;
-
-typedef struct JSON_Value
-{
-	TJSON_Value* next;
-	JSON_Value_Kind kind;
-	union
-	{
-		JSON_Object object;
-		JSON_Array array;
-		String string;
-		f64 number;
-		bool boolean;
-	};
-} JSON_Value;
-
-typedef struct JSON_Field
-{
-	String name;
-	JSON_Value* value;
-} JSON_Field;
-
 typedef enum JSON_Token_Kind
 {
 	JSONToken_Invalid = 0,
@@ -145,17 +102,17 @@ JSONTokenizer_NextToken(JSON_Tokenizer* state)
 			{
 				if (Char_IsAlpha(c))
 				{
-					String identifier = {
-						.data = state->input.data - 1,
-						.len  = 1,
-					};
+					char* start = &state->input.data[state->cursor-1],
 
 					while (state->cursor < state->input.len && Char_IsAlpha(state->input.data[state->cursor]))
 					{
 						++state->cursor;
 					}
 
-					identifier.len = state->cursor - identifier.data;
+					String identifier = {
+						.data = start,
+						.len  = &state->input.data[state->cursor] - start,
+					};
 
 					if (String_Equal(identifier, STRING("true")))
 					{
@@ -179,13 +136,144 @@ JSONTokenizer_NextToken(JSON_Tokenizer* state)
 				}
 				else if (c == '"')
 				{
-					NOT_IMPLEMENTED;
+					char* start = &state->input.data[state->cursor];
+
+					bool contains_escape_seq = false;
+
+					while (state->cursor < state->input.len && state->input.data[state->cursor] == '"')
+					{
+						if (state->input.data[state->cursor] == '\\' && state->cursor+1 < state->input.len)
+						{
+							state->cursor += 2;
+						}
+						else state->cursor += 1;
+					}
+
+					if (state->cursor >= state->input.len)
+					{
+						//// ERROR: unterminated string literal
+						encountered_errors = true;
+					}
+					else
+					{
+						ASSERT(state->input.data[state->cursor] == '"');
+
+						String raw_string = {
+							.data = start,
+							.len  = &state->input.data[state->cursor] - start,
+						};
+
+						state->cursor += sizeof('"');
+
+						char* memory = malloc(raw_string.size);
+
+						String string = {
+							.data = memory,
+							.len  = 0,
+						};
+
+						umm i = 0;
+						while (i < raw_string.len)
+						{
+							if (raw_string.data[i] != '\\')
+							{
+								string.data[string.len] = raw_string.data[i];
+								++string.len;
+								++i;
+							}
+							else
+							{
+								ASSERT(raw_string.data[i] == '\\');
+								++i;
+
+								// no need to check for length first since a terminated string cannot end in a '\'
+								char e = raw_string.data[i];
+								++i;
+
+								switch (e)
+								{
+									case 'b': string.data[string.len++] = '\b'; break;
+									case 'f': string.data[string.len++] = '\f'; break;
+									case 'n': string.data[string.len++] = '\n'; break;
+									case 'r': string.data[string.len++] = '\r'; break;
+									case 't': string.data[string.len++] = '\t'; break;
+
+									case 'u':
+									{
+										if (i+4 >= raw_string.len)
+										{
+											//// ERROR: missing digits
+											encountered_errors = true;
+											break;
+										}
+
+										char* inp = &raw_string.data[i];
+										i += 4;
+
+										u32 value = 0;
+
+										for (umm j = 0; j < 4; ++j)
+										{
+											value <<= 4;
+
+											if      (Char_IsDigit(inp[j]))         value |= inp[j] - '0';
+											else if (Char_IsHexAlphaDigit(inp[j])) value |= inp[j] - 'A' + 10;
+											else
+											{
+												//// ERROR: invalid digit
+												encountered_errors = true;
+												break;
+											}
+										}
+
+										if (!encountered_errors)
+										{
+											if (value <= 0x7F)
+											{
+												string.data[string.len++] = (u8)value;
+											}
+											else if (value <= 0x07FF)
+											{
+												string.data[string.len++] = 0xC0 | (u8)((value >> 6);
+												string.data[string.len++] = 0x80 | (u8)((value >> 0);
+											}
+											else
+											{
+												string.data[string.len++] = 0xE0 | (u8)((value >> 12);
+												string.data[string.len++] = 0x80 | (u8)((value >>  6);
+												string.data[string.len++] = 0x80 | (u8)((value >>  0);
+											}
+										}
+									} break;
+
+									default:
+									{
+										//// ERROR: unknown escape sequence
+										encountered_errors = true;
+									} break;
+								}
+							}
+						}
+
+						if (!encountered_errors)
+						{
+							state->current_token.kind   = Token_String;
+							state->current_token.string = string;
+						}
+					}
 				}
 				else if (Char_IsDigit(c) || c == '-')
 				{
-					bool is_negative = (c == '-');
+					bool is_negative  = false;
+					umm digit_count   = 0;
+					u64 integer_value = 0;
+					if (c == '-')
+					{
+						is_negative   = true;
+						digit_count   = 1;
+						integer_value = c - '0';
+					}
 
-					// TODO: remember first digit
 					NOT_IMPLEMENTED;
 				}
 				else

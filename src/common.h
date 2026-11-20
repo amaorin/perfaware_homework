@@ -58,6 +58,18 @@ Char_IsDigit(char c)
 }
 
 bool
+Char_IsHexAlphaDigit(char c)
+{
+	return ((u8)((c & 0xDF) - 'A') <= (u8)('F' - 'A'));
+}
+
+bool
+Char_IsHexDigit(char c)
+{
+	return (Char_IsDigit(c) || Char_IsHexAlphaDigit(c));
+}
+
+bool
 Char_IsAlpha(char c)
 {
 	return ((u8)((c & 0xDF) - 'A') <= (u8)('Z' - 'A'));
